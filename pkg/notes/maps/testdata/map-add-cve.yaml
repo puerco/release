@@ -1,0 +1,11 @@
+---
+pr: 2382
+datafields:
+  cve:
+    score: 7.8
+    id: CVE-2019-1010260
+    description: Really bad SSRF in KCM
+    published: 2020-10-05
+    issues:
+    - 9876
+    - 9875

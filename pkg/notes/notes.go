@@ -121,6 +121,9 @@ type ReleaseNote struct {
 	// Tags each note with a release version if specified
 	// If not specified, omitted
 	ReleaseVersion string `json:"release_version,omitempty"`
+
+	// DataFields a key indexed map of data fields
+	DataFields map[string]ReleaseNotesDataField
 }
 
 type Documentation struct {
@@ -157,9 +160,10 @@ type Result struct {
 }
 
 type Gatherer struct {
-	client  github.Client
-	context context.Context
-	options *options.Options
+	client       github.Client
+	context      context.Context
+	options      *options.Options
+	MapProviders []*MapProvider
 }
 
 // NewGatherer creates a new notes gatherer
@@ -205,6 +209,16 @@ func GatherReleaseNotes(opts *options.Options) (ReleaseNotes, ReleaseNotesHistor
 // ListReleaseNotes produces a list of fully contextualized release notes
 // starting from a given commit SHA and ending at starting a given commit SHA.
 func (g *Gatherer) ListReleaseNotes() (ReleaseNotes, ReleaseNotesHistory, error) {
+	// Load map providers
+	mapProviders := []MapProvider{}
+	for _, initString := range g.options.MapProviderStrings {
+		provider, err := NewProviderFromInitString(initString)
+		if err != nil {
+			return nil, nil, errors.Wrap(err, "while getting release notes map providers")
+		}
+		mapProviders = append(mapProviders, provider)
+	}
+
 	commits, err := g.listCommits(g.options.Branch, g.options.StartSHA, g.options.EndSHA)
 	if err != nil {
 		return nil, nil, err
@@ -239,6 +253,21 @@ func (g *Gatherer) ListReleaseNotes() (ReleaseNotes, ReleaseNotesHistory, error)
 			notes[note.PrNumber] = note
 			history = append(history, note.PrNumber)
 			dedupeCache[note.Text] = struct{}{}
+		}
+
+		// Query our map providers for additional data for the release note
+		for _, provider := range mapProviders {
+			noteMaps, err := provider.GetMapsForPR(note.PrNumber)
+			if err != nil {
+				logrus.Warn("Error while looking note map")
+				continue
+			}
+
+			for _, noteMap := range noteMaps {
+				if err := note.ApplyMap(noteMap); err != nil {
+					return nil, nil, errors.Wrapf(err, "applying notemap for PR #%d", note.PrNumber)
+				}
+			}
 		}
 	}
 
@@ -866,4 +895,52 @@ func prettifySIGList(sigs []string) string {
 	}
 
 	return sigList
+}
+
+// ApplyMap Modifies the content of the release using information from
+//  a ReleaseNotesMap
+func (rn *ReleaseNote) ApplyMap(noteMap *ReleaseNotesMap) error {
+	if noteMap.ReleaseNote.Author != nil {
+		rn.Author = *noteMap.ReleaseNote.Author
+		rn.AuthorURL = "https://github.com/" + *noteMap.ReleaseNote.Author
+	}
+
+	if noteMap.ReleaseNote.Text != nil {
+		rn.Text = *noteMap.ReleaseNote.Text
+	}
+
+	if noteMap.ReleaseNote.Documentation != nil {
+		rn.Documentation = *noteMap.ReleaseNote.Documentation
+	}
+
+	if noteMap.ReleaseNote.Areas != nil {
+		rn.Areas = *noteMap.ReleaseNote.Areas
+	}
+
+	if noteMap.ReleaseNote.Kinds != nil {
+		rn.Kinds = *noteMap.ReleaseNote.Kinds
+	}
+
+	if noteMap.ReleaseNote.SIGs != nil {
+		rn.SIGs = *noteMap.ReleaseNote.SIGs
+	}
+
+	if noteMap.ReleaseNote.Feature != nil {
+		rn.Feature = *noteMap.ReleaseNote.Feature
+	}
+
+	if noteMap.ReleaseNote.ActionRequired != nil {
+		rn.ActionRequired = *noteMap.ReleaseNote.ActionRequired
+	}
+
+	if noteMap.ReleaseNote.ReleaseVersion != nil {
+		rn.ReleaseVersion = *noteMap.ReleaseNote.ReleaseVersion
+	}
+
+	// If there are datafields, add them
+	for key, df := range rn.DataFields {
+		rn.DataFields[key] = df
+	}
+
+	return nil
 }
