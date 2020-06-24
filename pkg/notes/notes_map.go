@@ -17,7 +17,6 @@ limitations under the License.
 */
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 
@@ -43,10 +42,10 @@ func NewProviderFromInitString(initString string) (MapProvider, error) {
 	// whole init string as the path
 	fileStat, err := os.Stat(initString)
 	if os.IsNotExist(err) {
-		return nil, errors.New("Release notes map path does not exist")
+		return nil, errors.New("release notes map path does not exist")
 	}
 	if !fileStat.IsDir() {
-		return nil, errors.New("Release notes map path is not a directory")
+		return nil, errors.New("release notes map path is not a directory")
 	}
 
 	return &DirectoryMapProvider{Path: initString}, nil
@@ -65,14 +64,11 @@ func ParseReleaseNotesMap(mapPath string) (*[]ReleaseNotesMap, error) {
 
 	for {
 		if err := decoder.Decode(&noteMap); err != nil {
-			//return nil, errors.Wrap(err, "while unmarshaling map yaml")
 			break
 		}
-		logrus.Info("Nota en %s", mapPath)
 		notemaps = append(notemaps, noteMap)
 	}
 
-	// logrus.Infof("Note Value:\n%+v", notemap)
 	return &notemaps, nil
 }
 
@@ -152,14 +148,12 @@ func (mp *DirectoryMapProvider) readMaps() error {
 			mp.Maps[notemap.PR][len(mp.Maps[notemap.PR])] = &notemap
 			counter++
 		}
-
-		fmt.Printf("%+v", mp)
 	}
 	logrus.Infof("Succesfully parsed %d release notes maps for %d PRs from %s", counter, len(mp.Maps), mp.Path)
 	return err
 }
 
-// GetMaps get a map by PR number
+// GetMapsForPR get the release notes maps for a specific PR number
 func (mp *DirectoryMapProvider) GetMapsForPR(pr int) (notesMap map[int]*ReleaseNotesMap, err error) {
 	if mp.Maps == nil {
 		err := mp.readMaps()

@@ -905,19 +905,19 @@ func (rn *ReleaseNote) ApplyMap(noteMap *ReleaseNotesMap) error {
 	}
 
 	if noteMap.ReleaseNote.Documentation != nil {
-		rn.Documentation = append(rn.Documentation, *noteMap.ReleaseNote.Documentation...)
+		rn.Documentation = *noteMap.ReleaseNote.Documentation
 	}
 
 	if noteMap.ReleaseNote.Areas != nil {
-		rn.Areas = append(rn.Areas, *noteMap.ReleaseNote.Areas...)
+		rn.Areas = *noteMap.ReleaseNote.Areas
 	}
 
 	if noteMap.ReleaseNote.Kinds != nil {
-		rn.Kinds = append(rn.Kinds, *noteMap.ReleaseNote.Kinds...)
+		rn.Kinds = *noteMap.ReleaseNote.Kinds
 	}
 
 	if noteMap.ReleaseNote.SIGs != nil {
-		rn.SIGs = append(rn.SIGs, *noteMap.ReleaseNote.SIGs...)
+		rn.SIGs = *noteMap.ReleaseNote.SIGs
 	}
 
 	if noteMap.ReleaseNote.Feature != nil {
