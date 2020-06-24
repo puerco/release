@@ -1,4 +1,5 @@
 ---
 pr: 567
 datafields:
-  score: 4.2
+  cve:
+    score: 4.2

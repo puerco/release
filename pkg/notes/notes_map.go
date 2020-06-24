@@ -18,58 +18,62 @@ limitations under the License.
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"sigs.k8s.io/yaml"
+	"gopkg.in/yaml.v2"
 )
 
 // MapProvider interface that obtains release notes maps from a source
 type MapProvider interface {
-	// GetMaps
-	GetMaps() ([]*ReleaseNotesMap, error)
-	// Get a ReleaseNotesMap for a specific commit
-	GetMap(int) (*ReleaseNotesMap, error)
+	GetMapsForPR(int) (map[int]*ReleaseNotesMap, error)
 }
 
 // NewProviderFromInitString creates a new map provider from an initialization string
 func NewProviderFromInitString(initString string) (MapProvider, error) {
-	// DirectoryProvider
-	if initString[0:4] == "dir" {
-		parts := strings.Split(initString, ":")
-		if len(parts) != 2 {
-			return nil, errors.New("map provider initialization string is not well formed")
-		}
-
-		return &DirectoryMapProvider{
-			Path: parts[1],
-		}, nil
+	// If init string starts with gs:// return a CloudStorageProvider
+	if initString[0:5] == "gs://" {
+		// Currently for illustration purposes
+		return nil, errors.New("CloudStorageProvider is not yet implemented")
 	}
 
-	return nil, errors.New("Unkown map provider in init string")
+	// Otherwise, build a DirectoryMapProvider using the
+	// whole init string as the path
+	fileStat, err := os.Stat(initString)
+	if os.IsNotExist(err) {
+		return nil, errors.New("Release notes map path does not exist")
+	}
+	if !fileStat.IsDir() {
+		return nil, errors.New("Release notes map path is not a directory")
+	}
+
+	return &DirectoryMapProvider{Path: initString}, nil
 }
 
 // ParseReleaseNotesMap Parses a Release Notes Map
-func ParseReleaseNotesMap(mapPath string) (notemap *ReleaseNotesMap, err error) {
-	notemap = &ReleaseNotesMap{}
-	yamlData, err := ioutil.ReadFile(mapPath)
+func ParseReleaseNotesMap(mapPath string) (*[]ReleaseNotesMap, error) {
+	notemaps := []ReleaseNotesMap{}
+	yamlReader, err := os.Open(mapPath)
 	if err != nil {
-		return notemap, errors.Wrap(err, "reading map yaml")
-	}
-	if err := yaml.Unmarshal(yamlData, &notemap); err != nil {
-		return notemap, errors.Wrap(err, "while unmarshaling map yaml")
+		return nil, errors.Wrap(err, "opening maps")
 	}
 
-	// PR number is always required
-	if notemap.PR == 0 {
-		return nil, errors.New(fmt.Sprintf("Note map at %s does not have a PR number", mapPath))
+	decoder := yaml.NewDecoder(yamlReader)
+	noteMap := ReleaseNotesMap{}
+
+	for {
+		if err := decoder.Decode(&noteMap); err != nil {
+			//return nil, errors.Wrap(err, "while unmarshaling map yaml")
+			break
+		}
+		logrus.Info("Nota en %s", mapPath)
+		notemaps = append(notemaps, noteMap)
 	}
+
 	// logrus.Infof("Note Value:\n%+v", notemap)
-	return notemap, nil
+	return &notemaps, nil
 }
 
 // ReleaseNotesMap Represents
@@ -80,22 +84,22 @@ type ReleaseNotesMap struct {
 	Commit      string `json:"commit"`
 	ReleaseNote struct {
 		// Text is the actual content of the release note
-		Text string `json:"text"`
+		Text *string `json:"text"`
 
 		// Docs is additional documentation for the release note
-		Documentation []*Documentation `json:"documentation,omitempty"`
+		Documentation *[]*Documentation `json:"documentation,omitempty"`
 
 		// Author is the GitHub username of the commit author
-		Author string `json:"author"`
+		Author *string `json:"author"`
 
 		// Areas is a list of the labels beginning with area/
-		Areas []string `json:"areas,omitempty"`
+		Areas *[]string `json:"areas,omitempty"`
 
 		// Kinds is a list of the labels beginning with kind/
-		Kinds []string `json:"kinds,omitempty"`
+		Kinds *[]string `json:"kinds,omitempty"`
 
 		// SIGs is a list of the labels beginning with sig/
-		SIGs []string `json:"sigs,omitempty"`
+		SIGs *[]string `json:"sigs,omitempty"`
 
 		// Indicates whether or not a note will appear as a new feature
 		Feature *bool `json:"feature,omitempty"`
@@ -106,7 +110,7 @@ type ReleaseNotesMap struct {
 
 		// Tags each note with a release version if specified
 		// If not specified, omitted
-		ReleaseVersion string `json:"release_version,omitempty"`
+		ReleaseVersion *string `json:"release_version,omitempty"`
 	} `json:"release-note"`
 
 	DataFields map[string]ReleaseNotesDataField `json:"datafields"`
@@ -118,14 +122,14 @@ type ReleaseNotesDataField interface{}
 // DirectoryMapProvider is a provider that gets maps from a directory
 type DirectoryMapProvider struct {
 	Path string
-	Maps map[int]*ReleaseNotesMap
+	Maps map[int]map[int]*ReleaseNotesMap
 }
 
 // readMaps Open the dir and read dir notes
 func (mp *DirectoryMapProvider) readMaps() error {
 
 	var fileList []string
-	mp.Maps = map[int]*ReleaseNotesMap{}
+	mp.Maps = map[int]map[int]*ReleaseNotesMap{}
 
 	err := filepath.Walk(mp.Path, func(path string, info os.FileInfo, err error) error {
 		if filepath.Ext(path) == ".yaml" || filepath.Ext(path) == ".yml" {
@@ -134,22 +138,29 @@ func (mp *DirectoryMapProvider) readMaps() error {
 		return nil
 	})
 
+	counter := 0
 	for _, fileName := range fileList {
-		notemap, err := ParseReleaseNotesMap(fileName)
+		notemaps, err := ParseReleaseNotesMap(fileName)
 		if err != nil {
 			logrus.Warnf("while reading parsing note at %s", fileName)
 			continue
 		}
-		mp.Maps[notemap.PR] = notemap
+		for _, notemap := range *notemaps {
+			if _, ok := mp.Maps[notemap.PR]; !ok {
+				mp.Maps[notemap.PR] = map[int]*ReleaseNotesMap{}
+			}
+			mp.Maps[notemap.PR][len(mp.Maps[notemap.PR])] = &notemap
+			counter++
+		}
 
 		fmt.Printf("%+v", mp)
 	}
-	logrus.Infof("Succesfully parsed %d release notes maps from %s", len(mp.Maps), mp.Path)
+	logrus.Infof("Succesfully parsed %d release notes maps for %d PRs from %s", counter, len(mp.Maps), mp.Path)
 	return err
 }
 
-// GetMap get a map by PR number
-func (mp *DirectoryMapProvider) GetMap(pr int) (notesMap *ReleaseNotesMap, err error) {
+// GetMaps get a map by PR number
+func (mp *DirectoryMapProvider) GetMapsForPR(pr int) (notesMap map[int]*ReleaseNotesMap, err error) {
 	if mp.Maps == nil {
 		err := mp.readMaps()
 		if err != nil {
@@ -159,10 +170,5 @@ func (mp *DirectoryMapProvider) GetMap(pr int) (notesMap *ReleaseNotesMap, err e
 	if notesMap, ok := mp.Maps[pr]; ok {
 		return notesMap, nil
 	}
-	return nil, nil
-}
-
-// GetMaps return all release notes map found by the provider
-func (mp *DirectoryMapProvider) GetMaps() ([]*ReleaseNotesMap, error) {
 	return nil, nil
 }

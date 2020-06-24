@@ -173,7 +173,7 @@ func init() {
 		"maps-from",
 		"m",
 		[]string{},
-		"release notes map providers",
+		"specify a location to recursively look for release notes maps",
 	)
 
 	rootCmd.AddCommand(releaseNotesCmd)

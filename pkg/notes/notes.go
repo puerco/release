@@ -257,14 +257,16 @@ func (g *Gatherer) ListReleaseNotes() (ReleaseNotes, ReleaseNotesHistory, error)
 
 		// Query our map providers for additional data for the release note
 		for _, provider := range mapProviders {
-			noteMap, err := provider.GetMap(note.PrNumber)
+			noteMaps, err := provider.GetMapsForPR(note.PrNumber)
 			if err != nil {
 				logrus.Warn("Error while looking note map")
 				continue
 			}
 
-			if noteMap != nil {
-				note.ApplyMap(noteMap)
+			if noteMaps != nil {
+				for _, noteMap := range noteMaps {
+					note.ApplyMap(noteMap)
+				}
 			}
 
 		}
@@ -893,29 +895,29 @@ func prettifySIGList(sigs []string) string {
 //  a ReleaseNotesMap
 func (rn *ReleaseNote) ApplyMap(noteMap *ReleaseNotesMap) error {
 
-	if noteMap.ReleaseNote.Author != "" {
-		rn.Author = noteMap.ReleaseNote.Author
-		rn.AuthorURL = "https://github.com/" + noteMap.ReleaseNote.Author
+	if noteMap.ReleaseNote.Author != nil {
+		rn.Author = *noteMap.ReleaseNote.Author
+		rn.AuthorURL = "https://github.com/" + *noteMap.ReleaseNote.Author
 	}
 
-	if noteMap.ReleaseNote.Text != "" {
-		rn.Text = noteMap.ReleaseNote.Text
+	if noteMap.ReleaseNote.Text != nil {
+		rn.Text = *noteMap.ReleaseNote.Text
 	}
 
-	if len(noteMap.ReleaseNote.Documentation) > 0 {
-		rn.Documentation = append(rn.Documentation, noteMap.ReleaseNote.Documentation...)
+	if noteMap.ReleaseNote.Documentation != nil {
+		rn.Documentation = append(rn.Documentation, *noteMap.ReleaseNote.Documentation...)
 	}
 
-	if len(noteMap.ReleaseNote.Areas) > 0 {
-		rn.Areas = append(rn.Areas, noteMap.ReleaseNote.Areas...)
+	if noteMap.ReleaseNote.Areas != nil {
+		rn.Areas = append(rn.Areas, *noteMap.ReleaseNote.Areas...)
 	}
 
-	if len(noteMap.ReleaseNote.Kinds) > 0 {
-		rn.Kinds = append(rn.Kinds, noteMap.ReleaseNote.Kinds...)
+	if noteMap.ReleaseNote.Kinds != nil {
+		rn.Kinds = append(rn.Kinds, *noteMap.ReleaseNote.Kinds...)
 	}
 
-	if len(noteMap.ReleaseNote.SIGs) > 0 {
-		rn.SIGs = append(rn.SIGs, noteMap.ReleaseNote.SIGs...)
+	if noteMap.ReleaseNote.SIGs != nil {
+		rn.SIGs = append(rn.SIGs, *noteMap.ReleaseNote.SIGs...)
 	}
 
 	if noteMap.ReleaseNote.Feature != nil {
@@ -926,8 +928,8 @@ func (rn *ReleaseNote) ApplyMap(noteMap *ReleaseNotesMap) error {
 		rn.ActionRequired = *noteMap.ReleaseNote.ActionRequired
 	}
 
-	if noteMap.ReleaseNote.ReleaseVersion != "" {
-		rn.ReleaseVersion = noteMap.ReleaseNote.ReleaseVersion
+	if noteMap.ReleaseNote.ReleaseVersion != nil {
+		rn.ReleaseVersion = *noteMap.ReleaseNote.ReleaseVersion
 	}
 
 	// If there are datafields, add them
