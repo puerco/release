@@ -80,13 +80,13 @@ type ReleaseNotesMap struct {
 	Commit      string `json:"commit"`
 	ReleaseNote struct {
 		// Text is the actual content of the release note
-		Text *string `json:"text"`
+		Text *string `json:"text,omitempty"`
 
 		// Docs is additional documentation for the release note
 		Documentation *[]*Documentation `json:"documentation,omitempty"`
 
 		// Author is the GitHub username of the commit author
-		Author *string `json:"author"`
+		Author *string `json:"author,omitemptyr"`
 
 		// Areas is a list of the labels beginning with area/
 		Areas *[]string `json:"areas,omitempty"`
@@ -107,7 +107,7 @@ type ReleaseNotesMap struct {
 		// Tags each note with a release version if specified
 		// If not specified, omitted
 		ReleaseVersion *string `json:"release_version,omitempty"`
-	} `json:"release-note"`
+	} `json:"releasenote"`
 
 	DataFields map[string]ReleaseNotesDataField `json:"datafields"`
 }

@@ -63,6 +63,24 @@ filename | sha512 hash
 {{- end -}}
 # Changelog since {{$PreviousRevision}}
 
+{{with .CVEList -}}
+## Important security Information
+
+This release contains changes that address the following vulnerabilites:
+{{range .}}
+### {{.Title}}
+
+{{.Description}}
+
+__Rating:__ {{.Rating}} — __Score:__ {{.Score}} — __Published:__ {{.Published}}
+
+{{if .LinkedPRs -}}
+Pull Requests: {{range .LinkedPRs}}[#{{print .}}](https://github.com/kubernetes/kubernetes/issues/{{print .}}) {{end}}
+{{ end -}}
+
+{{ end }}
+{{- end -}}
+
 {{with .NotesWithActionRequired -}}
 ## Urgent Upgrade Notes 
 

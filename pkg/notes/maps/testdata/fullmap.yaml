@@ -23,7 +23,7 @@ datafields:
     description: Really bad SSRF in KCM
     published: 2020-10-05
     score: 5.2
-    issues:
+    linkedPRs:
     - 9876
     - 9875
 ---

@@ -109,7 +109,7 @@ type Options struct {
 	githubToken string
 	gitCloneFn  func(string, string, string, bool) (*git.Repo, error)
 
-	// A list ofmap provider init strings
+	// MapProviders list of release notes map providers to query during generations
 	MapProviderStrings []string
 }
 

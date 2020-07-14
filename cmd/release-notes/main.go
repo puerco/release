@@ -228,6 +228,14 @@ func init() {
 		true,
 		"Add dependency report",
 	)
+
+	cmd.PersistentFlags().StringSliceVarP(
+		&opts.MapProviderStrings,
+		"maps-from",
+		"m",
+		[]string{},
+		"specify a location to recursively look for release notes *.y[a]ml file mappings",
+	)
 }
 
 func WriteReleaseNotes(releaseNotes notes.ReleaseNotes, history notes.ReleaseNotesHistory) (err error) {
