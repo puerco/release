@@ -233,13 +233,29 @@ func (o *Options) ValidateAndFinish() (err error) {
 
 	// Validate the output format and template
 	logrus.Infof("Using output format: %s", o.Format)
-	if o.Format == FormatMarkdown && !strings.HasPrefix(o.GoTemplate, GoTemplatePrefix) {
-		return errors.Errorf("go template has to be prefixed with %q", GoTemplatePrefix)
+	if o.Format == FormatMarkdown && o.GoTemplate != GoTemplateDefault {
+		if !strings.HasPrefix(o.GoTemplate, GoTemplatePrefix) {
+			return errors.Errorf("go template has to be prefixed with %q", GoTemplatePrefix)
+		}
+
+		templatePathOrOnline := strings.TrimPrefix(o.GoTemplate, GoTemplatePrefix)
+		// Verify if template file exists
+		if !strings.HasPrefix(templatePathOrOnline, GoTemplatePrefixInline) {
+			fileStats, err := os.Stat(templatePathOrOnline)
+			if os.IsNotExist(err) {
+				return errors.Errorf("could not found template file (%s)", templatePathOrOnline)
+			}
+			if fileStats.Size() == 0 {
+				return errors.Errorf("template file %s is empty", templatePathOrOnline)
+			}
+		}
+	}
+	if o.Format == FormatJSON && o.GoTemplate != GoTemplateDefault {
+		return errors.New("go-template cannot be defined when in JSON mode")
 	}
 	if o.Format != FormatJSON && o.Format != FormatMarkdown {
 		return errors.Errorf("invalid format: %s", o.Format)
 	}
-
 	return nil
 }
 
