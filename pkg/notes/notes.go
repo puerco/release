@@ -21,7 +21,10 @@ import (
 	"context"
 	"crypto/sha1"
 	"fmt"
+	"io/ioutil"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -36,6 +39,7 @@ import (
 
 	"k8s.io/release/pkg/github"
 	"k8s.io/release/pkg/notes/options"
+	"k8s.io/release/pkg/util"
 )
 
 var (
@@ -64,6 +68,13 @@ type CVEData struct {
 	Rating      string  `json:"rating"`
 	LinkedPRs   []int   `json:"linkedPRs"`
 	Description string  `json:"description"`
+}
+
+// MajorTheme struct to define the release major versions
+type MajorTheme struct {
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	SIG         string `json:"sig"`
 }
 
 const (
@@ -1078,4 +1089,48 @@ func (rn *ReleaseNote) ContentHash() (string, error) {
 		return "", errors.Wrap(err, "calculating content hash from map")
 	}
 	return fmt.Sprintf("%x", h.Sum(nil)), nil
+}
+
+// ParseTheme parse a major theme file
+func ParseTheme(path string) (MajorTheme, error) {
+	theme := MajorTheme{}
+	data, err := ioutil.ReadFile(path)
+	if err != nil {
+		return theme, errors.Wrapf(err, "while parsing theme from %s", err)
+	}
+	// split the file into parts
+	parts := strings.SplitN(string(data), "---", 3)
+	if len(parts) != 3 {
+		return theme, errors.New("error getting front matter from md file")
+	}
+	// Parse the YAML
+	yaml.Unmarshal([]byte(parts[1]), &theme)
+	// Add the description markdown
+	theme.Description = parts[2]
+	logrus.Infof("Found release notes theme: %s", theme.Title)
+	return theme, nil
+}
+
+// ReadMajorThemes reads the major themes for the release and returns it
+func ReadMajorThemes(sourceDir string) ([]MajorTheme, error) {
+	if !util.Exists(sourceDir) {
+		return nil, errors.New("Themes source directory does not exist")
+	}
+	logrus.Info("Parsing major themes")
+	themes := make([]MajorTheme, 0)
+	err := filepath.Walk(sourceDir, func(path string, info os.FileInfo, err error) error {
+		if filepath.Ext(path) == ".md" {
+			theme, err := ParseTheme(path)
+			if err != nil {
+				return err
+			}
+			themes = append(themes, theme)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "parsing major themes")
+	}
+
+	return themes, nil
 }

@@ -117,6 +117,9 @@ type Options struct {
 
 	// MapProviders list of release notes map providers to query during generations
 	MapProviderStrings []string
+
+	// Directory to read the major themes from
+	MajorThemes string
 }
 
 type RevisionDiscoveryMode string

@@ -43,6 +43,7 @@ type Document struct {
 	CurrentRevision         string         `json:"release_tag"`
 	PreviousRevision        string
 	CVEList                 []notes.CVEData
+	MajorThemes             []notes.MajorTheme
 }
 
 // FileMetadata contains metadata about files associated with the release.
@@ -417,6 +418,11 @@ func CreateDownloadsTable(w io.Writer, bucket, tars, prevTag, newTag string) err
 
 	fmt.Fprintf(w, "## Changelog since %s\n\n", prevTag)
 	return nil
+}
+
+// Reut
+func CreateImagesTable(w io.Writer, bucket, tars, prevTag, newTag string) {
+
 }
 
 func highestPriorityKind(kinds []string) notes.Kind {
