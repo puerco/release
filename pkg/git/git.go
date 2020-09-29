@@ -590,6 +590,26 @@ func (r *Repo) Push(remoteBranch string) error {
 	return command.NewWithWorkDir(r.Dir(), gitExecutable, args...).RunSuccess()
 }
 
+// PushWithReties tries to push a branch, retrying when the error allows it
+func (r *Repo) PushWithReties(remoteBranch string, numRetries int) (err error) {
+	for numRetries > 0 {
+		err = r.Push(remoteBranch)
+		switch err {
+		case nil:
+			return nil
+		/*
+			FIXME: Check if error is fatal
+			case XXXX:
+					return err
+		*/
+		default:
+			logrus.Error(err)
+			numRetries--
+		}
+	}
+	return errors.New(fmt.Sprintf("still could not push %s after %d retries", remoteBranch, numRetries))
+}
+
 // Head retrieves the current repository HEAD as a string
 func (r *Repo) Head() (string, error) {
 	ref, err := r.inner.Head()
