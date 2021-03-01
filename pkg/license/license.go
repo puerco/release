@@ -19,10 +19,12 @@ limitations under the License.
 package license
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	licenseclassifier "github.com/google/licenseclassifier/v2"
 	"github.com/pkg/errors"
@@ -35,6 +37,31 @@ const (
 	defaultCacheSubDir   = "cache"
 	defaultLicenseSubDir = "licenses"
 )
+
+const kubernetesBoilerPlate = `# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0`
+
+// DebianLicenseLabels is a map to get the SPDX label from a debian label
+var DebianLicenseLabels = map[string]string{
+	"Apache-2.0": "Apache-2.0",
+	"Artistic":   "Artistic-1.0-Perl",
+	"BSD":        "BSD-1-Clause",
+	"CC0-1.0":    "CC0-1.0",
+	"GFDL-1.2":   "GFDL-1.2",
+	"GFDL-1.3":   "GFDL-1.3",
+	"GPL":        "GPL-1.0",
+	"GPL-1":      "GPL-1.0",
+	"GPL-2":      "GPL-2.0",
+	"GPL-3":      "GPL-3.0",
+	"LGPL-2":     "LGPL-2.0",
+	"LGPL-2.1":   "LGPL-2.1",
+	"LGPL-3":     "LGPL-3.0",
+	"MPL-1.1":    "MPL-1.1",
+	"MPL-2.0":    "MPL-2.0",
+}
 
 // Reader is an object that finds and interprets license files
 type Reader struct {
@@ -147,6 +174,20 @@ var DefaultReaderOptions = &ReaderOptions{
 	ConfidenceThreshold: 0.9,
 }
 
+// LicenseFromLabel returns a spdx license from its label
+func (r *Reader) LicenseFromLabel(label string) (license *SPDXLicense) {
+	return r.impl.LicenseFromLabel(label)
+}
+
+// LicenseFromFile reads a file ans returns its license
+func (r *Reader) LicenseFromFile(filePath string) (license *SPDXLicense, err error) {
+	license, err = r.impl.LicenseFromFile(filePath)
+	if err != nil {
+		return nil, errors.Wrap(err, "classifying file to determine license")
+	}
+	return license, err
+}
+
 // ReadLicenses returns an array of all licenses found in the specified path
 func (r *Reader) ReadLicenses(path string) (licenseList []ClassifyResult, unknownPaths []string, err error) {
 	licenseFiles, err := r.impl.FindLicenseFiles(path)
@@ -175,6 +216,8 @@ type ReaderImplementation interface {
 	Initialize(*ReaderOptions) error
 	ClassifyLicenseFiles([]string) ([]ClassifyResult, []string, error)
 	ClassifyFile(string) (string, []string, error)
+	LicenseFromFile(string) (*SPDXLicense, error)
+	LicenseFromLabel(string) *SPDXLicense
 	FindLicenseFiles(string) ([]string, error)
 }
 
@@ -225,6 +268,37 @@ func (d *ReaderDefaultImpl) SPDX() *SPDX {
 	return d.spdx
 }
 
+// HasKubernetesBoilerPlate checks if a file contains the Kubernetes License boilerplate
+func HasKubernetesBoilerPlate(filePath string) (bool, error) {
+	// kubernetesBoilerPlate
+	sut, err := os.Open(filePath)
+	if err != nil {
+		return false, errors.Wrap(err, "opening file to check for k8s boilerplate")
+	}
+	defer sut.Close()
+
+	// Trim whitespace from lines
+	scanner := bufio.NewScanner(sut)
+	scanner.Split(bufio.ScanLines)
+	text := ""
+	i := 0
+	for scanner.Scan() {
+		text = text + scanner.Text() + "\n"
+		i++
+		if i > 100 {
+			break
+		}
+	}
+	// If we're past 100 lines, forget it
+	if strings.Contains(text, kubernetesBoilerPlate) {
+		logrus.Infof("Found Kubernetes boilerplate in %s", filePath)
+		return true, nil
+	}
+
+	return false, nil
+
+}
+
 // ClassifyFile takes a file path and returns the most probable license tag
 func (d *ReaderDefaultImpl) ClassifyFile(path string) (licenseTag string, moreTags []string, err error) {
 	file, err := os.Open(path)
@@ -267,7 +341,7 @@ func (d *ReaderDefaultImpl) ClassifyLicenseFiles(paths []string) (
 		license := d.spdx.GetLicense(label)
 		if license == nil {
 			return nil, unrecognizedPaths,
-				errors.New(fmt.Sprintf("ID does not correspond to a valid license: %s", label))
+				errors.New(fmt.Sprintf("ID does not correspond to a valid license: '%s'", label))
 		}
 		// Apend to the return results
 		licenseList = append(licenseList, ClassifyResult{f, license})
@@ -277,6 +351,33 @@ func (d *ReaderDefaultImpl) ClassifyLicenseFiles(paths []string) (
 		len(licenseList), len(paths), (len(licenseList)/len(paths))*100,
 	)
 	return licenseList, unrecognizedPaths, nil
+}
+
+// LicenseFromLabel return a spdx license from its label
+func (d *ReaderDefaultImpl) LicenseFromLabel(label string) (license *SPDXLicense) {
+	return d.spdx.GetLicense(label)
+}
+
+// LicenseFromFile a file path and returns its license
+func (d *ReaderDefaultImpl) LicenseFromFile(path string) (license *SPDXLicense, err error) {
+	// Run the files through the clasifier
+	label, _, err := d.ClassifyFile(path)
+	if err != nil {
+		return nil, errors.Wrap(err, "classifying file")
+	}
+
+	if label == "" {
+		logrus.Info("File does not contain a known license: " + path)
+		return nil, nil
+	}
+
+	// Get the license corresponding to the ID label
+	license = d.spdx.GetLicense(label)
+	if license == nil {
+		return nil, errors.New(fmt.Sprintf("ID does not correspond to a valid license: %s", label))
+	}
+
+	return license, nil
 }
 
 // FindLicenseFiles will scan a directory and return files that may be licenses
