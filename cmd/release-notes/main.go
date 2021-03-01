@@ -368,7 +368,6 @@ func WriteReleaseNotes(releaseNotes *notes.ReleaseNotes) (err error) {
 }
 
 func run(*cobra.Command, []string) error {
-	opts.ListReleaseNotesV2 = true
 	releaseNotes, err := notes.GatherReleaseNotes(opts)
 	if err != nil {
 		return errors.Wrapf(err, "gathering release notes")
