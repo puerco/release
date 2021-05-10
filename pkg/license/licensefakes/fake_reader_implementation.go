@@ -62,29 +62,29 @@ type FakeReaderImplementation struct {
 	initializeReturnsOnCall map[int]struct {
 		result1 error
 	}
-	LicenseFromFileStub        func(string) (*license.SPDXLicense, error)
+	LicenseFromFileStub        func(string) (*license.License, error)
 	licenseFromFileMutex       sync.RWMutex
 	licenseFromFileArgsForCall []struct {
 		arg1 string
 	}
 	licenseFromFileReturns struct {
-		result1 *license.SPDXLicense
+		result1 *license.License
 		result2 error
 	}
 	licenseFromFileReturnsOnCall map[int]struct {
-		result1 *license.SPDXLicense
+		result1 *license.License
 		result2 error
 	}
-	LicenseFromLabelStub        func(string) *license.SPDXLicense
+	LicenseFromLabelStub        func(string) *license.License
 	licenseFromLabelMutex       sync.RWMutex
 	licenseFromLabelArgsForCall []struct {
 		arg1 string
 	}
 	licenseFromLabelReturns struct {
-		result1 *license.SPDXLicense
+		result1 *license.License
 	}
 	licenseFromLabelReturnsOnCall map[int]struct {
-		result1 *license.SPDXLicense
+		result1 *license.License
 	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
@@ -354,7 +354,7 @@ func (fake *FakeReaderImplementation) InitializeReturnsOnCall(i int, result1 err
 	}{result1}
 }
 
-func (fake *FakeReaderImplementation) LicenseFromFile(arg1 string) (*license.SPDXLicense, error) {
+func (fake *FakeReaderImplementation) LicenseFromFile(arg1 string) (*license.License, error) {
 	fake.licenseFromFileMutex.Lock()
 	ret, specificReturn := fake.licenseFromFileReturnsOnCall[len(fake.licenseFromFileArgsForCall)]
 	fake.licenseFromFileArgsForCall = append(fake.licenseFromFileArgsForCall, struct {
@@ -379,7 +379,7 @@ func (fake *FakeReaderImplementation) LicenseFromFileCallCount() int {
 	return len(fake.licenseFromFileArgsForCall)
 }
 
-func (fake *FakeReaderImplementation) LicenseFromFileCalls(stub func(string) (*license.SPDXLicense, error)) {
+func (fake *FakeReaderImplementation) LicenseFromFileCalls(stub func(string) (*license.License, error)) {
 	fake.licenseFromFileMutex.Lock()
 	defer fake.licenseFromFileMutex.Unlock()
 	fake.LicenseFromFileStub = stub
@@ -392,33 +392,33 @@ func (fake *FakeReaderImplementation) LicenseFromFileArgsForCall(i int) string {
 	return argsForCall.arg1
 }
 
-func (fake *FakeReaderImplementation) LicenseFromFileReturns(result1 *license.SPDXLicense, result2 error) {
+func (fake *FakeReaderImplementation) LicenseFromFileReturns(result1 *license.License, result2 error) {
 	fake.licenseFromFileMutex.Lock()
 	defer fake.licenseFromFileMutex.Unlock()
 	fake.LicenseFromFileStub = nil
 	fake.licenseFromFileReturns = struct {
-		result1 *license.SPDXLicense
+		result1 *license.License
 		result2 error
 	}{result1, result2}
 }
 
-func (fake *FakeReaderImplementation) LicenseFromFileReturnsOnCall(i int, result1 *license.SPDXLicense, result2 error) {
+func (fake *FakeReaderImplementation) LicenseFromFileReturnsOnCall(i int, result1 *license.License, result2 error) {
 	fake.licenseFromFileMutex.Lock()
 	defer fake.licenseFromFileMutex.Unlock()
 	fake.LicenseFromFileStub = nil
 	if fake.licenseFromFileReturnsOnCall == nil {
 		fake.licenseFromFileReturnsOnCall = make(map[int]struct {
-			result1 *license.SPDXLicense
+			result1 *license.License
 			result2 error
 		})
 	}
 	fake.licenseFromFileReturnsOnCall[i] = struct {
-		result1 *license.SPDXLicense
+		result1 *license.License
 		result2 error
 	}{result1, result2}
 }
 
-func (fake *FakeReaderImplementation) LicenseFromLabel(arg1 string) *license.SPDXLicense {
+func (fake *FakeReaderImplementation) LicenseFromLabel(arg1 string) *license.License {
 	fake.licenseFromLabelMutex.Lock()
 	ret, specificReturn := fake.licenseFromLabelReturnsOnCall[len(fake.licenseFromLabelArgsForCall)]
 	fake.licenseFromLabelArgsForCall = append(fake.licenseFromLabelArgsForCall, struct {
@@ -443,7 +443,7 @@ func (fake *FakeReaderImplementation) LicenseFromLabelCallCount() int {
 	return len(fake.licenseFromLabelArgsForCall)
 }
 
-func (fake *FakeReaderImplementation) LicenseFromLabelCalls(stub func(string) *license.SPDXLicense) {
+func (fake *FakeReaderImplementation) LicenseFromLabelCalls(stub func(string) *license.License) {
 	fake.licenseFromLabelMutex.Lock()
 	defer fake.licenseFromLabelMutex.Unlock()
 	fake.LicenseFromLabelStub = stub
@@ -456,26 +456,26 @@ func (fake *FakeReaderImplementation) LicenseFromLabelArgsForCall(i int) string 
 	return argsForCall.arg1
 }
 
-func (fake *FakeReaderImplementation) LicenseFromLabelReturns(result1 *license.SPDXLicense) {
+func (fake *FakeReaderImplementation) LicenseFromLabelReturns(result1 *license.License) {
 	fake.licenseFromLabelMutex.Lock()
 	defer fake.licenseFromLabelMutex.Unlock()
 	fake.LicenseFromLabelStub = nil
 	fake.licenseFromLabelReturns = struct {
-		result1 *license.SPDXLicense
+		result1 *license.License
 	}{result1}
 }
 
-func (fake *FakeReaderImplementation) LicenseFromLabelReturnsOnCall(i int, result1 *license.SPDXLicense) {
+func (fake *FakeReaderImplementation) LicenseFromLabelReturnsOnCall(i int, result1 *license.License) {
 	fake.licenseFromLabelMutex.Lock()
 	defer fake.licenseFromLabelMutex.Unlock()
 	fake.LicenseFromLabelStub = nil
 	if fake.licenseFromLabelReturnsOnCall == nil {
 		fake.licenseFromLabelReturnsOnCall = make(map[int]struct {
-			result1 *license.SPDXLicense
+			result1 *license.License
 		})
 	}
 	fake.licenseFromLabelReturnsOnCall[i] = struct {
-		result1 *license.SPDXLicense
+		result1 *license.License
 	}{result1}
 }
 

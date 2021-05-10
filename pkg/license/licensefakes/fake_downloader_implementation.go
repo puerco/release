@@ -8,16 +8,16 @@ import (
 )
 
 type FakeDownloaderImplementation struct {
-	GetLicensesStub        func() (*license.SPDXLicenseList, error)
+	GetLicensesStub        func() (*license.List, error)
 	getLicensesMutex       sync.RWMutex
 	getLicensesArgsForCall []struct {
 	}
 	getLicensesReturns struct {
-		result1 *license.SPDXLicenseList
+		result1 *license.List
 		result2 error
 	}
 	getLicensesReturnsOnCall map[int]struct {
-		result1 *license.SPDXLicenseList
+		result1 *license.List
 		result2 error
 	}
 	SetOptionsStub        func(*license.DownloaderOptions)
@@ -29,7 +29,7 @@ type FakeDownloaderImplementation struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeDownloaderImplementation) GetLicenses() (*license.SPDXLicenseList, error) {
+func (fake *FakeDownloaderImplementation) GetLicenses() (*license.List, error) {
 	fake.getLicensesMutex.Lock()
 	ret, specificReturn := fake.getLicensesReturnsOnCall[len(fake.getLicensesArgsForCall)]
 	fake.getLicensesArgsForCall = append(fake.getLicensesArgsForCall, struct {
@@ -53,34 +53,34 @@ func (fake *FakeDownloaderImplementation) GetLicensesCallCount() int {
 	return len(fake.getLicensesArgsForCall)
 }
 
-func (fake *FakeDownloaderImplementation) GetLicensesCalls(stub func() (*license.SPDXLicenseList, error)) {
+func (fake *FakeDownloaderImplementation) GetLicensesCalls(stub func() (*license.List, error)) {
 	fake.getLicensesMutex.Lock()
 	defer fake.getLicensesMutex.Unlock()
 	fake.GetLicensesStub = stub
 }
 
-func (fake *FakeDownloaderImplementation) GetLicensesReturns(result1 *license.SPDXLicenseList, result2 error) {
+func (fake *FakeDownloaderImplementation) GetLicensesReturns(result1 *license.List, result2 error) {
 	fake.getLicensesMutex.Lock()
 	defer fake.getLicensesMutex.Unlock()
 	fake.GetLicensesStub = nil
 	fake.getLicensesReturns = struct {
-		result1 *license.SPDXLicenseList
+		result1 *license.List
 		result2 error
 	}{result1, result2}
 }
 
-func (fake *FakeDownloaderImplementation) GetLicensesReturnsOnCall(i int, result1 *license.SPDXLicenseList, result2 error) {
+func (fake *FakeDownloaderImplementation) GetLicensesReturnsOnCall(i int, result1 *license.List, result2 error) {
 	fake.getLicensesMutex.Lock()
 	defer fake.getLicensesMutex.Unlock()
 	fake.GetLicensesStub = nil
 	if fake.getLicensesReturnsOnCall == nil {
 		fake.getLicensesReturnsOnCall = make(map[int]struct {
-			result1 *license.SPDXLicenseList
+			result1 *license.List
 			result2 error
 		})
 	}
 	fake.getLicensesReturnsOnCall[i] = struct {
-		result1 *license.SPDXLicenseList
+		result1 *license.List
 		result2 error
 	}{result1, result2}
 }

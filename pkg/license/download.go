@@ -20,19 +20,23 @@ import (
 	"crypto/sha1"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
+	"strings"
+
 	"os"
 	"path/filepath"
 
 	"github.com/nozzle/throttler"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"sigs.k8s.io/release-utils/http"
 	"sigs.k8s.io/release-utils/util"
 )
 
 // ListURL is the json list of all spdx licenses
-const ListURL = "https://spdx.org/licenses/licenses.json"
+const (
+	LicenseDataURL      = "https://spdx.org/licenses/"
+	LicenseListFilename = "licenses.json"
+)
 
 // NewDownloader returns a downloader with the default options
 func NewDownloader() (*Downloader, error) {
@@ -94,7 +98,7 @@ func (d *Downloader) SetImplementation(di DownloaderImplementation) {
 
 // GetLicenses is the mina function of the downloader. Returns a license list
 // or an error if could get them
-func (d *Downloader) GetLicenses() (*SPDXLicenseList, error) {
+func (d *Downloader) GetLicenses() (*List, error) {
 	return d.impl.GetLicenses()
 }
 
@@ -102,7 +106,7 @@ func (d *Downloader) GetLicenses() (*SPDXLicenseList, error) {
 
 // DownloaderImplementation has only one method
 type DownloaderImplementation interface {
-	GetLicenses() (*SPDXLicenseList, error)
+	GetLicenses() (*List, error)
 	SetOptions(*DownloaderOptions)
 }
 
@@ -124,23 +128,17 @@ func (ddi *DefaultDownloaderImpl) SetOptions(opts *DownloaderOptions) {
 }
 
 // GetLicenses downloads the main json file listing all SPDX supported licenses
-func (ddi *DefaultDownloaderImpl) GetLicenses() (licenses *SPDXLicenseList, err error) {
+func (ddi *DefaultDownloaderImpl) GetLicenses() (licenses *List, err error) {
 	// TODO: Cache licenselist
-	logrus.Info("Downloading main SPDX license data")
+	logrus.Info("Downloading main SPDX license data from " + LicenseDataURL)
 
 	// Get the list of licenses
-	resp, err := http.Get(ListURL)
+	licensesJSON, err := http.NewAgent().Get(LicenseDataURL + LicenseListFilename)
 	if err != nil {
 		return nil, errors.Wrap(err, "fetching licenses list")
 	}
-	defer resp.Body.Close()
 
-	licensesJSON, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, errors.Wrap(err, "reading license list response body")
-	}
-
-	licenseList := &SPDXLicenseList{}
+	licenseList := &List{}
 	if err := json.Unmarshal(licensesJSON, licenseList); err != nil {
 		return nil, errors.Wrap(err, "parsing SPDX licence list")
 	}
@@ -150,6 +148,11 @@ func (ddi *DefaultDownloaderImpl) GetLicenses() (licenses *SPDXLicenseList, err 
 	// Create a new Throttler that will get `parallelDownloads` urls at a time
 	t := throttler.New(ddi.Options.parallelDownloads, len(licenseList.LicenseData))
 	for _, l := range licenseList.LicenseData {
+		licURL := l.Reference
+		// If the license URLs have a local reference
+		if strings.HasPrefix(licURL, "./") {
+			licURL = LicenseDataURL + strings.TrimPrefix(licURL, "./")
+		}
 		// Launch a goroutine to fetch the URL.
 		go func(url string) {
 			var err error
@@ -159,7 +162,7 @@ func (ddi *DefaultDownloaderImpl) GetLicenses() (licenses *SPDXLicenseList, err 
 				return
 			}
 			licenseList.Add(l)
-		}(l.DetailsURL)
+		}(licURL)
 		t.Throttle()
 	}
 
@@ -214,7 +217,7 @@ func (ddi *DefaultDownloaderImpl) getCachedData(url string) ([]byte, error) {
 }
 
 // getLicenseFromURL downloads a license in json and returns it parsed into a struct
-func (ddi *DefaultDownloaderImpl) getLicenseFromURL(url string) (license *SPDXLicense, err error) {
+func (ddi *DefaultDownloaderImpl) getLicenseFromURL(url string) (license *License, err error) {
 	licenseJSON := []byte{}
 	// Determine the cache file name
 	if ddi.Options.EnableCache {
@@ -230,14 +233,9 @@ func (ddi *DefaultDownloaderImpl) getLicenseFromURL(url string) (license *SPDXLi
 	// If we still don't have json data, download it
 	if len(licenseJSON) == 0 {
 		logrus.Infof("Downloading license data from %s", url)
-		resp, err := http.Get(url)
+		licenseJSON, err := http.NewAgent().Get(url)
 		if err != nil {
 			return nil, errors.Wrapf(err, "getting %s", url)
-		}
-		defer resp.Body.Close()
-		licenseJSON, err = io.ReadAll(resp.Body)
-		if err != nil {
-			return nil, errors.Wrap(err, "reading response body")
 		}
 
 		logrus.Infof("Downloaded %d bytes from %s", len(licenseJSON), url)
@@ -249,5 +247,5 @@ func (ddi *DefaultDownloaderImpl) getLicenseFromURL(url string) (license *SPDXLi
 		}
 	}
 
-	return ParseSPDXLicense(licenseJSON)
+	return ParseLicense(licenseJSON)
 }

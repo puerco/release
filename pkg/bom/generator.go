@@ -24,13 +24,14 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"k8s.io/release/pkg/license"
 	"k8s.io/release/pkg/release"
+	"k8s.io/release/pkg/spdx"
+	"sigs.k8s.io/release-utils/hash"
 	"sigs.k8s.io/release-utils/util"
 )
 
@@ -50,9 +51,21 @@ const (
 
 // Generator is the abstraction for a bill of materials
 type Generator struct {
-	Options   *Options
-	Artifacts *ArtifactList
-	generatorImplementation
+	Options *Options
+	ArtifactList
+	impl generatorImplementation
+}
+
+func NewGenerator(opts *Options) (*Generator, error) {
+	if err := opts.Validate(); err != nil {
+		return nil, err
+	}
+	gen := &Generator{
+		Options: opts,
+	}
+	// gen.impl = &defaultGeneratorImplementation{}
+	return gen, nil
+
 }
 
 // ArtifactList a list of artifacts to be added to the BOM
@@ -75,9 +88,10 @@ func (list *ArtifactList) AddImage(path string) error {
 	if !util.Exists(path) {
 		return errors.New("unable to add layer, specified path does not exist")
 	}
-	if filepath.Ext(path) != "tar" {
+	if filepath.Ext(path) != ".tar" {
 		return errors.New("image path has to point to a tar file")
 	}
+	logrus.Infof("Adding image to artifacts list %f", path)
 	list.images = append(list.images, path)
 	return nil
 }
@@ -108,13 +122,13 @@ func (o Options) Validate() error {
 
 //counterfeiter:generate . generatorImplementation
 type generatorImplementation interface {
-	createSPDXDocument(*Options) (*license.Document, error)
-	generateImagePackage(string, *Options) (*license.Package, error)
-	generateDistrolessPackage(string, *Options) (*license.Package, error)
-	generateGoRunnerPackage(string, *Options) (*license.Package, error)
-	generateContainerPackage(string, *Options) (*license.Package, error)
-	fetchDistrolessPackages(map[string]string, error)
-	licenseReader(*Options) *license.Reader
+	createSPDXDocument(*Options) (*spdx.Document, error)
+	generateImagePackage(string, *Options) (*spdx.Package, error)
+	generateDistrolessPackage(string, *Options) (*spdx.Package, error)
+	generateGoRunnerPackage(string, *Options) (*spdx.Package, error)
+	generateContainerPackage(string, *Options) (*spdx.Package, error)
+	fetchDistrolessPackages() (map[string]string, error)
+	licenseReader(*Options) (*license.Reader, error)
 }
 
 type defaultGeneratorImplementation struct {
@@ -122,15 +136,9 @@ type defaultGeneratorImplementation struct {
 }
 
 // generateSPDXBOM generates a spdx bill of materials
-func (impl *defaultGeneratorImplementation) createSPDXDocument(
-	o *Options) (doc *license.Document, err error,
+func (impl *defaultGeneratorImplementation) createSPDXDocument(o *Options) (
+	doc *spdx.Document, err error,
 ) {
-	// Create a new SPDX to build the document
-	spdx, err := license.NewSPDX()
-	if err != nil {
-		logrus.Fatal(err)
-	}
-
 	// Create the BOM document to represent the image
 	doc = spdx.NewDocument()
 	doc.Name = o.Name
@@ -140,14 +148,14 @@ func (impl *defaultGeneratorImplementation) createSPDXDocument(
 }
 
 // Generate writes a Bill of Materials for the specified artifacts
-func (g *Generator) Generate() (doc *license.Document, err error) {
+func (g *Generator) Generate() (doc *spdx.Document, err error) {
 	// Check options are correct before starting
 	if err := g.Options.Validate(); err != nil {
 		return doc, errors.Wrap(err, "checking bom generator options")
 	}
 
 	// Creatre the document to hold all packages
-	doc, err = g.generatorImplementation.createSPDXDocument(g.Options)
+	doc, err = g.impl.createSPDXDocument(g.Options)
 	if err != nil {
 		return doc, errors.Wrap(err, "creating SPDX document")
 	}
@@ -155,10 +163,10 @@ func (g *Generator) Generate() (doc *license.Document, err error) {
 	// Cycle all images and add them to the document as SPDX Packages.
 	// This assumes all images are built using the same
 	// distroless-gorunner-container structure
-	for _, imagePath := range g.Artifacts.Images() {
+	for _, imagePath := range g.Images() {
 		pkg, err := g.generateImagePackage(imagePath)
 		if err != nil {
-			return doc, errors.Wrap(err, "generating SPDX package for")
+			return doc, errors.Wrap(err, "generating SPDX package for "+imagePath)
 		}
 		if err := doc.AddPackage(pkg); err != nil {
 			return doc, errors.Wrap(err, "adding image package to bom")
@@ -168,22 +176,48 @@ func (g *Generator) Generate() (doc *license.Document, err error) {
 	return doc, err
 }
 
-func (g *Generator) generateImagePackage(tarPath string) (pkg *license.Package, err error) {
-	return g.generatorImplementation.generateImagePackage(tarPath, g.Options)
+func (g *Generator) generateImagePackage(tarPath string) (pkg *spdx.Package, err error) {
+	return g.impl.generateImagePackage(tarPath, g.Options)
+}
+
+// ReadTarballManifest returns the manifest from a tar image
+func ReadTarballManifest(tarPath string) (manifest ImageManifest, err error) {
+	tarFile, err := os.Open(tarPath)
+	if err != nil {
+		return manifest, errors.Wrap(err, "reading tar file")
+	}
+	defer tarFile.Close()
+	logrus.Infof("Extracting manifest from %s", tarFile.Name())
+
+	tr := tar.NewReader(tarFile)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return manifest, errors.Wrap(err, "iterating over tar filefile filenames")
+		}
+
+		if hdr.FileInfo().Name() == "manifest.json" {
+
+		}
+	}
+	return manifest, errors.New("unable to find image manifest")
 }
 
 // generateImagePackage gets a path to an image tarfile and returns a SPDX
 //  package describing its layers. This code is written specific for the three layer
 //  image structure produced by the Kubernetes release process.
 func (impl *defaultGeneratorImplementation) generateImagePackage(
-	tarPath string, o *Options) (pkg *license.Package, err error) {
+	tarPath string, o *Options) (pkg *spdx.Package, err error) {
 	// Get the manifest from the tar file
-	manifest, err := release.GetTarManifest(tarPath)
+	manifest, err := ReadTarballManifest(tarPath)
 	if err != nil {
 		return pkg, errors.Wrap(err, "getting image manifest from tar file")
 	}
 
-	// To proceed we need at least one tag in the manifest
+	// To proceed we need at least one tag in the manifestq
 	if len(manifest.RepoTags) == 0 {
 		return pkg, errors.New("image manifest does not include a repo tag")
 	}
@@ -198,24 +232,12 @@ func (impl *defaultGeneratorImplementation) generateImagePackage(
 		return pkg, errors.New("unable to get version from image repo tag")
 	}
 
-	imagePackage := &license.Package{
+	// Create the top level package
+	imagePackage := &spdx.Package{
 		FilesAnalyzed:    true,
 		Name:             strings.TrimPrefix(tagparts[0], release.GCRIOPathProd+"/"),
 		DownloadLocation: repotag,
 		Version:          tagparts[1],
-		/*
-			FileName:         layerFileName,
-			Supplier: struct {
-				Person       string
-				Organization string
-			}{},
-			Originator: struct {
-				Person       string
-				Organization string
-			}{},
-			Packages: map[string]*license.Package{},
-			Files:    map[string]*license.File{},
-		*/
 	}
 
 	// Extract the image layers
@@ -258,209 +280,137 @@ func (impl *defaultGeneratorImplementation) generateImagePackage(
 			return pkg, errors.Wrap(err, "extracting image data")
 		}
 	}
-	// Cycle the layers in the image manifest
-	for i, layer := range manifest.Layers {
+
+	// Generate a base SPDX entry for each layer
+
+	for _, layer := range manifest.LayerFiles {
 		if !util.Exists(filepath.Join(dir, layer)) {
 			return pkg, errors.Wrapf(err, "extracted layer not found: %s", layer)
 		}
-		switch i {
-		case 0:
-			logrus.WithField("image", tagparts[0]).Infof("Processing layer #%d (distroless): %s", i, layer)
-			fragment, err := impl.generateDistrolessPackage(filepath.Join(dir, layer), o)
-			if err != nil {
-				return pkg, errors.Wrap(err, "processing distroless layer")
-			}
-			fragment.FileName = "./" + layer
-			imagePackage.AddPackage(&fragment)
-		case 1:
-			logrus.WithField("image", tagparts[0]).Infof("Processing layer #%d (go-runner): %s", i, layer)
-			fragment, err := impl.generateGoRunnerPackage(filepath.Join(dir, layer), o)
-			if err != nil {
-				return pkg, errors.Wrap(err, "processing go-runner layer")
-			}
-			fragment.FileName = "./" + layer
-			imagePackage.AddPackage(&fragment)
-		case 2:
-			logrus.WithField("image", tagparts[0]).Infof("Processing layer #%d (binary): %s", i, layer)
-			fragment, err := impl.generateContainerPackage(filepath.Join(dir, layer), o)
-		}
-	}
 
-	// Cycle all files in the image to declare them in the BOM
-	if err := filepath.Walk(dir,
-		func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				return err
-			}
-			if info.IsDir() {
-				return nil
-			}
-
-			// Try to generate more understandable IDs:
-			spdxID := ""
-			switch info.Name() {
-			case "manifest.json":
-				spdxID = "image-manifest"
-			case "layer.tar":
-				switch strings.TrimPrefix(path, dir+"/") {
-				case manifest.Layers[0]:
-					spdxID = "distroless-layer"
-				case manifest.Layers[1]:
-					spdxID = "go-runner-layer"
-				case manifest.Layers[2]:
-					spdxID = "container-layer"
-				}
-			}
-			if spdxID != "" {
-				spdxID = "SPDXRef-File-" + imagePackage.Name + "-" + spdxID
-			}
-
-			file := &license.File{
-				Name: "." + strings.TrimPrefix(path, dir),
-				ID:   spdxID,
-			}
-
-			if err := file.ReadChecksums(path); err != nil {
-				return errors.Wrap(err, "generating file checksums")
-			}
-
-			imagePackage.AddFile(file)
-			return nil
-		}); err != nil {
-		return pkg, errors.Wrap(err, "reading image directory")
-	}
-
-	pkg.AddPackage(imagePackage)
-	return pkg, nil
-}
-
-// GenerateDistrolessFragment reads the distroless image layer and produces a
-// spdx document fragment
-func (impl defaultGeneratorImplementation) generateDistrolessPackage(
-	layerPath string, o *Options) (pkg license.Package, err error) {
-	// Create a new license reader to scan license files
-	licenseReader, err := impl.licenseReader(o)
-	if err != nil {
-		return pkg, errors.Wrap(err, "creating license reader to scan distroless image")
-	}
-
-	// Create the package representing the distroless layer
-	pkg = license.Package{
-		Name:          "distroless",
-		ID:            "SPDXRef-Package-distroless",
-		FilesAnalyzed: false,
-	}
-
-	// Fetch the current distrolless packages
-	packageList, err := impl.fetchDistrolessPackages()
-	if err != nil {
-		return pkg, errors.Wrap(err, "getting package lists")
-	}
-
-	// Open the distroless layer tar for reading
-	tarfile, err := os.Open(layerPath)
-	if err != nil {
-		return pkg, errors.Wrap(err, "opening distroless image layer ")
-	}
-	defer tarfile.Close()
-	dir, err := os.MkdirTemp(os.TempDir(), "image-process-")
-	if err != nil {
-		return pkg, errors.Wrap(err, "creating temporary directory")
-	}
-	// defer os.RemoveAll(dir)
-	tr := tar.NewReader(tarfile)
-	for {
-		hdr, err := tr.Next()
-		if err == io.EOF {
-			break
-		}
+		sha256, err := hash.SHA256ForFile(filepath.Join(dir, layer))
 		if err != nil {
-			return pkg, errors.Wrap(err, "reading the image tarfile")
+			return nil, errors.Wrap(err, "get sha256")
 		}
 
-		// Scan the license directories to to determine the installed packages
-		if strings.HasPrefix(hdr.Name, distrolessLicensePath) && strings.HasSuffix(hdr.Name, distrolessLicenseName) {
-			// We infer the name of the package from the license directory
-			packageName := strings.TrimSuffix(strings.TrimPrefix(hdr.Name, distrolessLicensePath), distrolessLicenseName)
-			logrus.Infof("Creating SPDX subpackage " + packageName)
-			subpkg := &license.Package{Name: packageName}
-			if _, ok := packageList[subpkg.Name]; ok {
-				logrus.Infof("distroless includes version %s of %s", packageList[subpkg.Name], subpkg.Name)
-				subpkg.Version = packageList[subpkg.Name]
-			} else {
-				logrus.Warnf("could not determine version for package", packageList[subpkg.Name], subpkg.Name)
-			}
+		sha512, err := hash.SHA512ForFile(filepath.Join(dir, layer))
+		if err != nil {
+			return nil, errors.Wrap(err, "get sha512")
+		}
 
-			// Extract the package license to a file
-			f, err := os.Create(filepath.Join(dir, packageName+".license"))
-			if err != nil {
-				return pkg, errors.Wrap(err, "creating image layer file")
-			}
-			defer f.Close()
+		fragment := &spdx.Package{
+			Name:             layerFileName,
+			ID:               "",
+			DownloadLocation: goRunnerDownloadLocation,
+			LicenseConcluded: "",
+			FileName:         layer,
+			Checksum: map[string]string{
+				"SHA256": sha256,
+				"SHA512": sha512,
+			},
+		}
+		imagePackage.AddPackage(fragment)
+	}
 
-			if _, err := io.Copy(f, tr); err != nil {
-				return pkg, errors.Wrap(err, "extracting license data for "+subpkg.Name)
-			}
+	/*
 
-			// Use our license classifier to try to determine
-			// the license we are dealing with
-			spdxlicense, err := licenseReader.LicenseFromFile(f.Name())
-			if err != nil {
-				return pkg, errors.Wrap(err, "reading license from file")
+		// Cycle the layers in the image manifest
+		for i, layer := range manifest.LayerFiles {
+			if !util.Exists(filepath.Join(dir, layer)) {
+				return pkg, errors.Wrapf(err, "extracted layer not found: %s", layer)
 			}
-
-			// If we still do not have a license, try to get it from the
-			// devian copyright files. We have to read the files so...
-			if spdxlicense == nil {
-				// ...open the file
-				fileData, err := ioutil.ReadFile(filepath.Join(dir, packageName+".license"))
+			switch i {
+			case 0:
+				logrus.WithField("image", tagparts[0]).Infof("Processing layer #%d (distroless): %s", i, layer)
+				fragment, err := impl.generateDistrolessPackage(filepath.Join(dir, layer), o)
 				if err != nil {
-					return pkg, errors.Wrap(err, "reading license file")
+					return pkg, errors.Wrap(err, "processing distroless layer")
+				}
+				fragment.FileName = "./" + layer
+				imagePackage.AddPackage(fragment)
+			case 1:
+				logrus.WithField("image", tagparts[0]).Infof("Processing layer #%d (go-runner): %s", i, layer)
+				fragment, err := impl.generateGoRunnerPackage(filepath.Join(dir, layer), o)
+				if err != nil {
+					return pkg, errors.Wrap(err, "processing go-runner layer")
+				}
+				fragment.FileName = "./" + layer
+				imagePackage.AddPackage(fragment)
+			case 2:
+				logrus.WithField("image", tagparts[0]).Infof("Processing layer #%d (binary): %s", i, layer)
+				fragment, err := impl.generateContainerPackage(filepath.Join(dir, layer), o)
+				if err != nil {
+					return pkg, errors.Wrap(err, "processing CCC layer")
+				}
+				fragment.FileName = "./" + layer
+				imagePackage.AddPackage(fragment)
+			}
+		}
+	*/
+
+	/*
+
+		// Cycle all files in the image to declare them in the BOM
+		if err := filepath.Walk(dir,
+			func(path string, info os.FileInfo, err error) error {
+				if err != nil {
+					return err
+				}
+				if info.IsDir() {
+					return nil
 				}
 
-				// We will try to look for the license in two ways:
-				if strings.Contains(string(fileData), "is in the public domain") {
-					// Option 1: File is in the public domain
-					logrus.Info("File is the public domain")
-
-					// In this case we include the full license text in the manifest
-					subpkg.CopyrightText = string(fileData)
-					subpkg.LicenseComments = "Found public domain declaration in copyright text file"
-
-				} else {
-
-					// Option 2: Copyright file references an installed license.
-					re := regexp.MustCompile(commonLicensesRe)
-					label := re.FindString(string(fileData))
-					label = strings.TrimPrefix(label, distrolessCommonLicenseDir)
-					label = strings.TrimSuffix(label, ".")
-
-					// Translate from debian to SPDX label
-					label = license.DebianLicenseLabels[label]
-					if label != "" {
-						spdxlicense = licenseReader.LicenseFromLabel(label)
-						logrus.Infof("Found license %s for package %s by reading copyright file", spdxlicense.LicenseID, subpkg.Name)
-						subpkg.LicenseDeclared = spdxlicense.LicenseID
+				// Try to generate more understandable IDs:
+				spdxID := ""
+				switch info.Name() {
+				case "manifest.json":
+					spdxID = "image-manifest"
+				case "layer.tar":
+					switch strings.TrimPrefix(path, dir+"/") {
+					case manifest.LayerFiles[0]:
+						spdxID = "distroless-layer"
+					case manifest.LayerFiles[1]:
+						spdxID = "go-runner-layer"
+					case manifest.LayerFiles[2]:
+						spdxID = "container-layer"
 					}
 				}
-			} else {
-				subpkg.LicenseDeclared = spdxlicense.LicenseID
-			}
+				if spdxID != "" {
+					spdxID = "SPDXRef-File-" + imagePackage.Name + "-" + spdxID
+				}
 
-			// Add the debian package to the layer package
-			if err := pkg.AddPackage(subpkg); err != nil {
-				return pkg, errors.Wrapf(err, "adding %s subpackage", subpkg.Name)
-			}
+				file := &license.File{
+					Name: "." + strings.TrimPrefix(path, dir),
+					ID:   spdxID,
+				}
 
+				if err := file.ReadChecksums(path); err != nil {
+					return errors.Wrap(err, "generating file checksums")
+				}
+
+				imagePackage.AddFile(file)
+				return nil
+			}); err != nil {
+			return pkg, errors.Wrap(err, "reading image directory")
 		}
+	*/
+	// Create the final SPDX package for the image:
+	pkg = &spdx.Package{
+		FilesAnalyzed: false, // sera true
+		Name:          "binary",
+		ID:            "SPDXRef-image",
+		// DownloadLocation: goRunnerDownloadLocation,
+		// FileName: tarPath, RepoTag?
 	}
+	pkg.Supplier.Person = "Kubernetes Release Managers (release-managers@kubernetes.io)"
+	pkg.AddPackage(imagePackage)
 	return pkg, nil
 }
 
 // generateGoRunnerPackage Reads and processes the go-runner layer
 func (impl *defaultGeneratorImplementation) generateGoRunnerPackage(
-	layerPath string, o *Options) (fragment license.Package, err error) {
-	fragment = license.Package{
+	layerPath string, o *Options) (fragment *spdx.Package, err error) {
+	fragment = &spdx.Package{
 		FilesAnalyzed:    false,
 		Name:             "go-runner",
 		ID:               "SPDXRef-Package-go-runner",
@@ -468,11 +418,11 @@ func (impl *defaultGeneratorImplementation) generateGoRunnerPackage(
 		FileName:         layerPath,
 	}
 	fragment.Supplier.Person = "Kubernetes Release Managers (release-managers@kubernetes.io)"
-
-	licenseReader, err := impl.licenseReader(o)
-	if err != nil {
-		return fragment, errors.Wrap(err, "getting license reader to parse the go-runner image")
-	}
+	/*
+		licenseReader, err := impl.licenseReader(o)
+		if err != nil {
+			return fragment, errors.Wrap(err, "getting license reader to parse the go-runner image")
+		}*/
 
 	// Get the go-runner version
 	// TODO: Add http retries
@@ -500,16 +450,16 @@ func (impl *defaultGeneratorImplementation) generateGoRunnerPackage(
 	}
 
 	df, err := ioutil.TempFile(os.TempDir(), "gorunner-dockerfile-")
-	defer df.Close()
 	if err != nil {
 		return fragment, errors.Wrap(err, "creating temporary file to read go-runner license")
 	}
+	defer df.Close()
 	if _, err := io.Copy(df, lic.Body); err != nil {
 		return fragment, errors.Wrap(err, "writing go-runner license to temp file")
 	}
 
 	// Let's extract the license for the layer:
-	var grlic *license.SPDXLicense
+	var grlic *license.License
 	// First, check if the file has our boiler plate
 	hasbp, err := license.HasKubernetesBoilerPlate(df.Name())
 	if err != nil {
@@ -517,10 +467,10 @@ func (impl *defaultGeneratorImplementation) generateGoRunnerPackage(
 	}
 	// If the boilerplate was found, we know it is apache2
 	if hasbp {
-		grlic = licenseReader.LicenseFromLabel("Apache-2.0")
+		//grlic = licenseReader.LicenseFromLabel("Apache-2.0")
 		// Otherwise, as a fallback, try to classify the file
 	} else {
-		grlic, err = licenseReader.LicenseFromFile(df.Name())
+		//grlic, err = licenseReader.LicenseFromFile(df.Name())
 		if err != nil {
 			return fragment, errors.Wrap(err, "attempting to read go-runner license")
 		}
@@ -550,77 +500,80 @@ func (impl *defaultGeneratorImplementation) fetchDistrolessPackages() (pkgInfo m
 	return pkgInfo, nil
 }
 
-// licenseReader returns a reusable license reader
-func (impl *defaultGeneratorImplementation) licenseReader(o *Options) (*license.Reader, error) {
-	if impl.reader == nil {
-		// We use a defualt license cache
-		opts := license.DefaultReaderOptions
-		ldir := filepath.Join(os.TempDir(), "spdx-license-reader-licenses")
-		// ... unless overriden by the options
-		if o.LicenseCacheDir != "" {
-			ldir = o.LicenseCacheDir
-		}
-
-		// If the license cache does not exist, create it
-		if !util.Exists(ldir) {
-			if err := os.Mkdir(ldir, os.FileMode(0o0755)); err != nil {
-				return nil, errors.Wrap(err, "Failed to create license cache directory")
-			}
-		}
-		opts.CacheDir = ldir
-		// Create the new reader
-		reader, err := license.NewReaderWithOptions(opts)
-		if err != nil {
-			return nil, errors.Wrap(err, "creating reusable license reader")
-		}
-		impl.reader = reader
-	}
-	return impl.reader, nil
-}
-
 // generateContainerPackage generates a SPDX package for the container layer
 func (impl *defaultGeneratorImplementation) generateContainerPackage(
-	tarPath string, o *Options) (pkg *license.Package, err error) {
+	tarPath string, o *Options) (fragment *spdx.Package, err error) {
 	// Un tar the layer to register the files in the manifest
+	logrus.Infof("Generating container package for %s", tarPath)
 	tarfile, err := os.Open(tarPath)
 	if err != nil {
-		return pkg, errors.Wrap(err, "processing tar file")
+		return fragment, errors.Wrap(err, "processing tar file")
 	}
 	defer tarfile.Close()
 
 	dir, err := os.MkdirTemp(os.TempDir(), "image-process-container-")
 	if err != nil {
-		return pkg, errors.Wrap(err, "creating temporary directory")
+		return fragment, errors.Wrap(err, "creating temporary directory")
 	}
 	defer os.RemoveAll(dir)
 
+	fragment = &spdx.Package{
+		FilesAnalyzed: false, // sera true
+		Name:          "binary",
+		ID:            "SPDXRef-Package-single-binary",
+		// DownloadLocation: goRunnerDownloadLocation,
+		FileName: tarPath,
+	}
+	fragment.Supplier.Person = "Kubernetes Release Managers (release-managers@kubernetes.io)"
+
 	tr := tar.NewReader(tarfile)
+	numFiles := 0
+	lastFile := ""
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
 			break // End of archive
 		}
 		if err != nil {
-			return pkg, errors.Wrap(err, "reading the image tarfile")
+			return fragment, errors.Wrap(err, "reading the image tarfile")
 		}
+
 		if hdr.FileInfo().IsDir() {
-			if err := os.MkdirAll(filepath.Join(dir, hdr.Name), os.FileMode(0o755)); err != nil {
-				return pkg, errors.Wrap(err, "creating image directory structure")
-			}
 			continue
+		}
+
+		if strings.HasPrefix(filepath.Base(hdr.FileInfo().Name()), ".wh") {
+			logrus.Info("Skipping extraction of whiteout file")
+			continue
+		}
+
+		if err := os.MkdirAll(filepath.Join(dir, filepath.Dir(hdr.Name)), os.FileMode(0o755)); err != nil {
+			return fragment, errors.Wrap(err, "creating image directory structure")
 		}
 
 		targetFile := filepath.Join(dir, hdr.Name)
 		f, err := os.Create(targetFile)
 		if err != nil {
-			return pkg, errors.Wrap(err, "creating image layer file")
+			return fragment, errors.Wrap(err, "creating image layer file")
 		}
 		defer f.Close()
 
 		if _, err := io.Copy(f, tr); err != nil {
-			return pkg, errors.Wrap(err, "extracting image data")
+			return fragment, errors.Wrap(err, "extracting image data")
 		}
+		lastFile = hdr.Name
+		numFiles++
 	}
 
-	return pkg, err
+	if numFiles == 1 {
+		logrus.Info("Single binary found in layer: " + lastFile)
+	}
+
+	return fragment, err
+}
+
+type ImageManifest struct {
+	ConfigFilename string   `json:"Config"`
+	RepoTags       []string `json:"RepoTags"`
+	LayerFiles     []string `json:"Layers"`
 }
