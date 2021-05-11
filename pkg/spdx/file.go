@@ -2,16 +2,14 @@ package spdx
 
 import (
 	"bytes"
-	"crypto/sha1"
-	"crypto/sha256"
-	"crypto/sha512"
-	"fmt"
-	"hash"
 	"html/template"
-	"io"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/pkg/errors"
+	"sigs.k8s.io/release-utils/hash"
+	"sigs.k8s.io/release-utils/util"
 )
 
 var fileTemplate = `{{ if .Name }}FileName: {{ .Name }}
@@ -36,11 +34,31 @@ var fileTemplate = `{{ if .Name }}FileName: {{ .Name }}
 // File abstracts a file contained in a package
 type File struct {
 	Name              string // string /Makefile
+	FileName          string // Name of the file
 	ID                string // SPDXRef-Makefile
 	LicenseConcluded  string // GPL-3.0-or-later
 	LicenseInfoInFile string // GPL-3.0-or-later
 	CopyrightText     string // NOASSERTION
+	SourceFile        string // Source file to read from (not part of the spec)
 	Checksum          map[string]string
+
+	options *FileOptions // Options
+}
+
+func NewFile() (f *File) {
+	f = &File{
+		options: &FileOptions{},
+	}
+	return f
+}
+
+func (f *File) Options() *FileOptions {
+	return f.options
+}
+
+// FileOptions
+type FileOptions struct {
+	WorkDir string
 }
 
 // ReadChecksums receives a path to a file and calculates its checksums
@@ -53,24 +71,18 @@ func (f *File) ReadChecksums(filePath string) error {
 		return errors.Wrap(err, "opening file for reading: "+filePath)
 	}
 	defer file.Close()
-	for _, h := range []hash.Hash{sha1.New(), sha256.New(), sha512.New()} {
-		checksum, err := func(f *os.File, h hash.Hash, filePath string) (sum string, err error) {
-			if _, err := f.Seek(0, 0); err != nil {
-				return "", errors.Wrap(err, "seeking file")
-			}
-			if _, err := io.Copy(h, f); err != nil {
-				return "", errors.Wrap(err, "writing file contests to hasher")
-			}
-			return fmt.Sprintf("%x", h.Sum(nil)), nil
-		}(file, h, filePath)
-		if err != nil {
-			return errors.Wrap(err, "calculating checksum of file")
-		}
-		if h.Size() == 20 {
-			f.Checksum["SHA1"] = checksum
-		} else {
-			f.Checksum[fmt.Sprintf("SHA%d", h.Size()*8)] = checksum
-		}
+	s256, err := hash.SHA256ForFile(filePath)
+	if err != nil {
+		return errors.Wrap(err, "getting file checksums")
+	}
+	s512, err := hash.SHA512ForFile(filePath)
+	if err != nil {
+		return errors.Wrap(err, "getting file checksums")
+	}
+
+	f.Checksum = map[string]string{
+		"SHA256": s256,
+		"SHA512": s512,
 	}
 	return nil
 }
@@ -90,4 +102,28 @@ func (f *File) Render() (docFragment string, err error) {
 
 	docFragment = buf.String()
 	return docFragment, nil
+}
+
+// ReadSourceFile reads the source file for the package and populates
+//  the fields derived from it (Checksums and FileName)
+func (f *File) ReadSourceFile(path string) error {
+	if !util.Exists(path) {
+		return errors.New("unable to find package source file")
+	}
+
+	s256, err := hash.SHA256ForFile(path)
+	if err != nil {
+		return errors.Wrap(err, "getting source file sha256")
+	}
+	s512, err := hash.SHA512ForFile(path)
+	if err != nil {
+		return errors.Wrap(err, "getting source file sha512")
+	}
+	f.Checksum = map[string]string{
+		"SHA256": s256,
+		"SHA512": s512,
+	}
+	f.SourceFile = path
+	f.FileName = strings.TrimPrefix(path, f.Options().WorkDir+string(filepath.Separator))
+	return nil
 }

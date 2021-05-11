@@ -18,6 +18,7 @@ package spdx
 
 import (
 	"bytes"
+	"crypto/sha1"
 	"fmt"
 	"html/template"
 	"log"
@@ -65,6 +66,7 @@ type Document struct {
 	}
 	Created  time.Time // 2020-11-24T01:12:27Z
 	Packages map[string]*Package
+	Files    map[string]*File // List of files
 }
 
 // NewDocument returns a new SPDX document with some defaults preloaded
@@ -197,6 +199,30 @@ func (d *Document) Render() (doc string, err error) {
 		Relationship: DocumentRef-go-lib:SPDXRef-Package-go.strconv STATIC_LINK SPDXRef-Package-hello-go-bin
 	*/
 	return doc, err
+}
+
+// AddFile adds a file contained in the package
+func (d *Document) AddFile(file *File) error {
+	if d.Files == nil {
+		d.Files = map[string]*File{}
+	}
+	// If file does not have an ID, we try to build one
+	// by hashing the file name
+	if file.ID == "" {
+		if file.Name == "" {
+			return errors.New("unable to generate file ID, filename not set")
+		}
+		if d.Name == "" {
+			return errors.New("unable to generate file ID, filename not set")
+		}
+		h := sha1.New()
+		if _, err := h.Write([]byte(d.Name + ":" + file.Name)); err != nil {
+			return errors.Wrap(err, "getting sha1 of filename")
+		}
+		file.ID = "SPDXRef-File-" + fmt.Sprintf("%x", h.Sum(nil))
+	}
+	d.Files[file.ID] = file
+	return nil
 }
 
 // TODO: {{ if .ExternalDocumentRef }}ExternalDocumentRef:DocumentRef-hello-go-src https://swinslow.net/spdx-examples/example6/hello-go-src-v1 SHA256: 5aac40a3b28b4a0a571a327631d752ffda7d4631093b035f38bd201baa45565e{{ end -}}

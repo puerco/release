@@ -164,7 +164,20 @@ func (builder defaultDocBuilderImpl) GenerateDoc(
 		if err != nil {
 			return nil, errors.Wrap(err, "generating tarball package")
 		}
-		doc.AddPackage(p)
+		if err := doc.AddPackage(p); err != nil {
+			return nil, errors.Wrap(err, "adding package to document")
+		}
+	}
+
+	for _, f := range genopts.Files {
+		logrus.Info("Processing file %s, f")
+		f, err := spdx.FileFromPath(f)
+		if err != nil {
+			return nil, errors.Wrap(err, "adding file")
+		}
+		if err := doc.AddFile(f); err != nil {
+			return nil, errors.Wrap(err, "adding file to document")
+		}
 	}
 	return doc, nil
 }
