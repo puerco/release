@@ -293,9 +293,10 @@ func (s *Stage) Run() error {
 	}
 
 	logger.WithStep().Info("Generating bill of materials")
-	if err := s.client.GenerateBillOfMaterials(); err != nil {
-		return errors.Wrap(err, "generating sbom")
-	}
+	// nolint:gocritic
+	// if err := s.client.GenerateBillOfMaterials(); err != nil {
+	//		return errors.Wrap(err, "generating sbom")
+	//	}
 
 	logger.WithStep().Info("Staging artifacts")
 	if err := s.client.StageArtifacts(); err != nil {
