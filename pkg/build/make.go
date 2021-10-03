@@ -89,6 +89,11 @@ func (m *Make) MakeCross(version string) error {
 	logrus.Infof("Unsetting %s to force parallel build", buildMemoryKey)
 	os.Setenv(buildMemoryKey, "0")
 
+	// DROP: Do a fast build
+	os.Setenv("KUBE_BUILD_CONFORMANCE", "N")
+	os.Setenv("KUBE_FASTBUILD", "Y")
+	os.Setenv("KUBE_BUILD_PLATFORMS", "linux/amd64")
+
 	logrus.Info("Building binaries")
 	if err := m.impl.Command(
 		"make",
