@@ -25,10 +25,10 @@ require (
 	github.com/sendgrid/sendgrid-go v3.11.1+incompatible
 	github.com/shirou/gopsutil/v3 v3.22.2
 	github.com/shurcooL/githubv4 v0.0.0-20220115235240-a14260e6f8a2
-	github.com/sirupsen/logrus v1.8.1
-	github.com/spf13/cobra v1.4.0
+	github.com/sirupsen/logrus v1.9.0
+	github.com/spf13/cobra v1.5.0
 	github.com/spiegel-im-spiegel/go-cvss v1.0.0
-	github.com/stretchr/testify v1.7.1
+	github.com/stretchr/testify v1.8.0
 	github.com/tj/go-spin v1.1.0
 	github.com/yuin/goldmark v1.4.11
 	golang.org/x/net v0.0.0-20220225172249-27dd8689420f
@@ -40,7 +40,7 @@ require (
 	sigs.k8s.io/mdtoc v1.1.0
 	sigs.k8s.io/promo-tools/v3 v3.3.0
 	sigs.k8s.io/release-sdk v0.7.1-0.20220316205410-f3891f4abf58
-	sigs.k8s.io/release-utils v0.5.0
+	sigs.k8s.io/release-utils v0.7.3
 	sigs.k8s.io/yaml v1.3.0
 	sigs.k8s.io/zeitgeist v0.3.0
 )
@@ -97,6 +97,7 @@ require (
 	github.com/benbjohnson/clock v1.1.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bgentry/speakeasy v0.1.0 // indirect
+	github.com/blang/semver/v4 v4.0.0 // indirect
 	github.com/cenkalti/backoff/v3 v3.2.2 // indirect
 	github.com/census-instrumentation/opencensus-proto v0.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
@@ -108,7 +109,7 @@ require (
 	github.com/coreos/go-oidc/v3 v3.1.0 // indirect
 	github.com/coreos/go-semver v0.3.0 // indirect
 	github.com/coreos/go-systemd/v22 v22.3.2 // indirect
-	github.com/cpuguy83/go-md2man/v2 v2.0.1 // indirect
+	github.com/cpuguy83/go-md2man/v2 v2.0.2 // indirect
 	github.com/cyberphone/json-canonicalization v0.0.0-20210823021906-dc406ceaf94b // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dimchansky/utfbom v1.1.1 // indirect
@@ -300,7 +301,7 @@ require (
 	golang.org/x/crypto v0.0.0-20220112180741-5e0467b6c7ce // indirect
 	golang.org/x/mod v0.6.0-dev.0.20220106191415-9b9b3d81d5e3 // indirect
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c // indirect
-	golang.org/x/sys v0.0.0-20220315194320-039c03cc5b86 // indirect
+	golang.org/x/sys v0.0.0-20220715151400-c0bba94af5f8 // indirect
 	golang.org/x/term v0.0.0-20210927222741-03fcf44c2211 // indirect
 	golang.org/x/time v0.0.0-20211116232009-f0f3c7e86c11 // indirect
 	golang.org/x/tools v0.1.10 // indirect
@@ -315,12 +316,12 @@ require (
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
 	gopkg.in/square/go-jose.v2 v2.6.0 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
-	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/api v0.22.5 // indirect
 	k8s.io/apimachinery v0.22.5 // indirect
 	k8s.io/client-go v0.22.5 // indirect
 	k8s.io/klog/v2 v2.40.1 // indirect
-	k8s.io/utils v0.0.0-20211208161948-7d6a63dca704 // indirect
+	k8s.io/utils v0.0.0-20220210201930-3a6ce19ff2f9 // indirect
 	knative.dev/pkg v0.0.0-20220121092305-3ba5d72e310a // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.2.1 // indirect
 )
