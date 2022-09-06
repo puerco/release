@@ -34,6 +34,25 @@ steps:
     echo "Checking out ${_TOOL_REF}"
     git checkout ${_TOOL_REF}
 
+- name: 'gcr.io/cloud-builders/git'
+  args: ['clone', 'https://github.com/puerco/tejolote', '.tejolote']
+
+- name: golang:1.19
+  entrypoint: /bin/bash
+  args: 
+      - -c
+      - |
+        (cd .tejolote; go build -o ../tejolote cmd/tejolote/main.go)
+        ./tejolote start attestation \
+          --vcs-url="git+https://github.com/kubernetes/kubernetes@${_BUILDVERSION}" \
+          --config-digest="$(cd go/src/k8s.io/release; git rev-parse HEAD)" \
+          --config-uri="git+https://github.com/kubernetes/release@${_GIT_TAG}" \
+          --config-entrypoint="gcb/stage/cloudbuild.yaml" \
+          --pubsub=projects/puerco-chainguard/topics/slsa \
+          --builder=$(echo "${_GCP_USER_TAG}" | sed 's/-at-/@/') \
+          --artifacts=gs://kubernetes-release-gcb/stage/${_BUILDVERSION}/provenance.json \
+          gcb://${PROJECT_ID}/${BUILD_ID}
+
 - name: gcr.io/k8s-staging-releng/k8s-cloud-builder:${_KUBE_CROSS_VERSION_LATEST}
   dir: "go/src/k8s.io/release"
   env:
